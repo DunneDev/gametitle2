@@ -63,23 +63,28 @@ end
 
 -- Function that runs every time screen is tapped
 function onTap( event )
-  local layer = camera:layer(1)
-  local xDiff = event.x - ( player.x + layer.x )
-  local yDiff = event.y - ( player.y + layer.y )
+  if( player.readyToFire == true )then
+    local layer = camera:layer(1)
+    local xDiff = event.x - ( player.x + layer.x )
+    local yDiff = event.y - ( player.y + layer.y )
 
-  print( player.x, player.y, layer.x, layer.y )
+    local angle = math.atan2( yDiff, xDiff )
+    if (settings.guns[player.gun].projectile) then
 
-  local angle = math.atan2( yDiff, xDiff )
-  if (settings.guns[player.gun].projectile) then
+    else
+      shootNonProjectile( angle )
+    end
 
-  else
-    shootNonProjectile( angle )
+    -- Move player
+    local xForce = math.cos(angle) * settings.guns[player.gun].recoil * -1
+    local yForce = math.sin(angle) * settings.guns[player.gun].recoil * -1
+    player:applyLinearImpulse( xForce, yForce, player.x, player.y )
+
+    player.readyToFire = false
+    timer.performWithDelay( settings.guns[player.gun].attackSpeed, function()
+      player.readyToFire = true
+    end )
   end
-
-  -- Move player
-  local xForce = math.cos(angle) * settings.guns[player.gun].recoil * -1
-  local yForce = math.sin(angle) * settings.guns[player.gun].recoil * -1
-  player:applyLinearImpulse( xForce, yForce, player.x, player.y )
 end
 
 --New frame
@@ -101,7 +106,7 @@ function scene:create( event )
         recoil = 5, -- distance the character travels on attack
         magazine = 6,
         reloadTime = 1000, -- miliseconds
-        attackSpeed = 400, -- minimum time between shots
+        attackSpeed = 500, -- minimum time between shots
         hitbox = {0,0, 500,-300, 500,300},
         activeTime = 200
       }
@@ -136,6 +141,7 @@ function scene:create( event )
   player = display.newRect( mainGroup, display.contentCenterX, display.contentCenterY,
     settings.player.size, settings.player.size )
   player.gun = settings.player.defaultGun
+  player.readyToFire = true
 
   physics.addBody( player, "dynamic", {friction = settings.player.friction, bounce = 0} )
   player.linearDamping = settings.player.friction
