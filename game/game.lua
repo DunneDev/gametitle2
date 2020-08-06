@@ -81,9 +81,19 @@ function onTap( event )
     player:applyLinearImpulse( xForce, yForce, player.x, player.y )
 
     player.readyToFire = false
-    timer.performWithDelay( settings.guns[player.gun].attackSpeed, function()
-      player.readyToFire = true
-    end )
+    if(player.ammo > 1)then
+       player.ammo = player.ammo - 1
+       timer.performWithDelay( settings.guns[player.gun].attackSpeed, function()
+         player.readyToFire = true
+       end )
+    else -- reloading
+        print( "reloading ... " )
+        timer.performWithDelay( settings.guns[player.gun].reloadTime, function()
+         player.ammo = settings.guns[player.gun].magazine
+         player.readyToFire = true
+         print( "reloaded!" )
+       end )
+    end
   end
 end
 
@@ -105,7 +115,7 @@ function scene:create( event )
         projectile = false,
         recoil = 5, -- distance the character travels on attack
         magazine = 6,
-        reloadTime = 1000, -- miliseconds
+        reloadTime = 2000, -- miliseconds
         attackSpeed = 500, -- minimum time between shots
         hitbox = {0,0, 500,-300, 500,300},
         activeTime = 200
@@ -142,6 +152,7 @@ function scene:create( event )
     settings.player.size, settings.player.size )
   player.gun = settings.player.defaultGun
   player.readyToFire = true
+  player.ammo = settings.guns[player.gun].magazine
 
   physics.addBody( player, "dynamic", {friction = settings.player.friction, bounce = 0} )
   player.linearDamping = settings.player.friction
