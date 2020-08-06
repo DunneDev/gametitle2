@@ -1,5 +1,6 @@
 
 local composer = require( "composer" )
+local perspective = require("perspective")
 
 local scene = composer.newScene()
 
@@ -16,11 +17,19 @@ physics.setDrawMode( "hybrid" )  -- Overlays collision outlines on normal displa
 
 -- Initialize variables
 local settings
+local camera
 
 local player
 local bullets = {}
 local map
+local environment ={
+  topWall,
+  leftWall,
+  rightWall,
+  bottomWall
+}
 
+local sceneGroup
 local backGroup
 local mainGroup
 local uiGroup
@@ -38,10 +47,13 @@ end
 
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle )
-  local shot = display.newPolygon( mainGroup, player.x, player.y, settings.guns[player.gun].hitbox )
+  local layer = camera:layer(1)
+  local shot = display.newPolygon( mainGroup, player.x + layer.x, player.y + layer.y, settings.guns[player.gun].hitbox )
   shot:setFillColor(1,0,0)
   shot.rotation = toDeg( shotAngle )
   shot.anchorX = 0
+
+  player.rotation = toDeg( shotAngle )
 
   timer.performWithDelay( settings.guns[player.gun].activeTime, function()
     shot:removeSelf()
@@ -51,8 +63,11 @@ end
 
 -- Function that runs every time screen is tapped
 function onTap( event )
-  local xDiff = event.x - player.x
-  local yDiff = event.y - player.y
+  local layer = camera:layer(1)
+  local xDiff = event.x - ( player.x + layer.x )
+  local yDiff = event.y - ( player.y + layer.y )
+
+  print( player.x, player.y, layer.x, layer.y )
 
   local angle = math.atan2( yDiff, xDiff )
   if (settings.guns[player.gun].projectile) then
@@ -67,18 +82,23 @@ function onTap( event )
   player:applyLinearImpulse( xForce, yForce, player.x, player.y )
 end
 
+--New frame
+function newFrame()
+end
+
 -- create()
 function scene:create( event )
   settings = {
     player = {
       size = 125,
       defaultGun = "shotgun",
-      friction = 1
+      friction = 3
     },
+
     guns = {
       shotgun = {
         projectile = false,
-        recoil = 0.3, -- placeholder
+        recoil = 5, -- distance the character travels on attack
         magazine = 6,
         reloadTime = 1000, -- miliseconds
         attackSpeed = 400, -- minimum time between shots
@@ -88,7 +108,7 @@ function scene:create( event )
     }
   }
 
-	local sceneGroup = self.view
+	sceneGroup = self.view
 	-- Code here runs when the scene is first created but has not yet appeared on screen
 
   physics.pause()  -- Temporarily pause the physics engine
@@ -103,7 +123,10 @@ function scene:create( event )
 	uiGroup = display.newGroup()
 	sceneGroup:insert( uiGroup )
 
-  --Initialize the mainGroup
+  -- Setup the camera
+  camera = perspective.createView()
+
+  --Initialize the map
   map = display.newRect( backGroup, 0, 0, 1080, 1920)
   map.anchorX = 0
   map.anchorY = 0
@@ -114,10 +137,36 @@ function scene:create( event )
     settings.player.size, settings.player.size )
   player.gun = settings.player.defaultGun
 
-  physics.addBody( player, "dynamic", {friction = 1} )
+  physics.addBody( player, "dynamic", {friction = settings.player.friction, bounce = 0} )
+  player.linearDamping = settings.player.friction
+  player.angularDamping = settings.player.friction
+
+  camera:add(player, 1) -- Add player to layer 1 of the camera
+
+  -- Initialize environment
+    -- Temporary Border
+      environment.topWall = display.newRect( mainGroup, 0, 0, 2500, 100 )
+      environment.leftWall = display.newRect( mainGroup, 25, display.contentCenterY, 100, 1920 )
+      environment.rightWall = display.newRect( mainGroup, 1055, display.contentCenterY, 100, 1920 )
+      environment.bottomWall = display.newRect( mainGroup, 0, 1920, 2500, 100 )
+
+      physics.addBody( environment.topWall, "static", {bounce = 0} )
+      physics.addBody( environment.leftWall, "static", {bounce = 0}  )
+      physics.addBody( environment.rightWall, "static", {bounce = 0}  )
+      physics.addBody( environment.bottomWall, "static", {bounce = 0}  )
+
+  camera:add(environment.topWall, 2)
+  camera:add(environment.leftWall, 2)
+  camera:add(environment.rightWall, 2)
+  camera:add(environment.bottomWall, 2)
+
+  camera.damping = 10 -- A bit more fluid tracking
+  camera:setFocus(player) -- Set the focus to the player
+  camera:track() -- Begin auto-tracking
 
   --Initialize event listeners
   sceneGroup:addEventListener( "tap", onTap )
+  Runtime:addEventListener( "enterFrame", newFrame )
 end
 
 
