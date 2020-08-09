@@ -1,85 +1,77 @@
-
+------------------------ Scene setup ------------------------
 local composer = require( "composer" )
-local perspective = require("perspective")
+local perspective = require( "perspective" )
+local physics = require( "physics" )
 
 local scene = composer.newScene()
 
--- -----------------------------------------------------------------------------------
--- Code outside of the scene event functions below will only be executed ONCE unless
--- the scene is removed entirely (not recycled) via "composer.removeScene()"
--- -----------------------------------------------------------------------------------
-
--- Physics engine setup
-local physics = require( "physics" )
-physics.start()
-physics.setGravity( 0, 0 )
-physics.setDrawMode( "hybrid" )  -- Overlays collision outlines on normal display objects
-
--- Initialize variables
+------------------------ Initialize variables ------------------------
 local settings
 local camera
 
 local player
 local bullets = {}
+
 local map
-local environment ={
-  topWall,
-  leftWall,
-  rightWall,
-  bottomWall
-}
+local environment = {}
 
 local sceneGroup
 local backGroup
 local mainGroup
 local uiGroup
 
--- -----------------------------------------------------------------------------------
--- Scene event functions
--- -----------------------------------------i------------------------------------------
---Utility functions
+------------------------ Utility functions ------------------------
 
 -- Convert degrees to radians
 function toDeg( rad )
  return rad * 57.2958
 end
 
+------------------------ Game Functions ------------------------
 
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle )
-  local layer = camera:layer(1)
+  --Initialize the shot
+  local layer = camera:layer( 1 )
   local shot = display.newPolygon( mainGroup, player.x + layer.x, player.y + layer.y, settings.guns[player.gun].hitbox )
-  shot:setFillColor(1,0,0)
+  shot:setFillColor( 1, 0, 0 )
   shot.rotation = toDeg( shotAngle )
   shot.anchorX = 0
 
-  player.rotation = toDeg( shotAngle )
+  player.rotation = toDeg( shotAngle ) -- Set player rotation
 
+  -- Remove the shot
   timer.performWithDelay( settings.guns[player.gun].activeTime, function()
     shot:removeSelf()
     shot = nil
-  end)
+  end )
 end
 
--- Function that runs every time screen is tapped
-function onTap( event )
-  if( player.readyToFire == true )then
+------------------------ Event Functions ------------------------
+
+-- Function that handles shooting
+function shoot( event )
+  print("fired a shot")
+  if( player.readyToFire == true ) then -- Only shoot if the player is able to
+    -- Calculate shot angle
     local layer = camera:layer(1)
     local xDiff = event.x - ( player.x + layer.x )
     local yDiff = event.y - ( player.y + layer.y )
-
     local angle = math.atan2( yDiff, xDiff )
-    if (settings.guns[player.gun].projectile) then
 
+    if ( settings.guns[player.gun].projectile ) then
+      -- Projectile weapons
     else
+      -- Non-projectile weapons
       shootNonProjectile( angle )
     end
 
     -- Move player
-    local xForce = math.cos(angle) * settings.guns[player.gun].recoil * -1
-    local yForce = math.sin(angle) * settings.guns[player.gun].recoil * -1
+    local xForce = math.cos( angle ) * settings.guns[player.gun].recoil * -1
+    local yForce = math.sin( angle ) * settings.guns[player.gun].recoil * -1
     player:applyLinearImpulse( xForce, yForce, player.x, player.y )
 
+    --
     player.readyToFire = false
     if(player.ammo > 1)then
        player.ammo = player.ammo - 1
@@ -97,12 +89,11 @@ function onTap( event )
   end
 end
 
---New frame
-function newFrame()
-end
+------------------------ Scene Functions ------------------------
 
 -- create()
 function scene:create( event )
+  -- Initialise settings
   settings = {
     player = {
       size = 125,
@@ -123,10 +114,14 @@ function scene:create( event )
     }
   }
 
+  -- Scene Setup
 	sceneGroup = self.view
-	-- Code here runs when the scene is first created but has not yet appeared on screen
 
-  physics.pause()  -- Temporarily pause the physics engine
+  -- Physics engine setup
+  physics.start()
+  physics.setGravity( 0, 0 )
+  physics.setDrawMode( "hybrid" )  -- Overlays collision outlines on normal display objects for debug purposes
+  physics.pause()  -- Temporarily pause the physics engine while scene loads
 
 	-- Set up display groups
 	backGroup = display.newGroup()
@@ -147,6 +142,23 @@ function scene:create( event )
   map.anchorY = 0
   map:setFillColor( 0.2, 0.2, 0.2 )
 
+  -- Initialize environment
+  -- Temporary Border
+  environment.topWall = display.newRect( mainGroup, 0, 0, 2500, 100 )
+  environment.leftWall = display.newRect( mainGroup, 25, display.contentCenterY, 100, 1920 )
+  environment.rightWall = display.newRect( mainGroup, 1055, display.contentCenterY, 100, 1920 )
+  environment.bottomWall = display.newRect( mainGroup, 0, 1920, 2500, 100 )
+
+  physics.addBody( environment.topWall, "static", {bounce = 0} )
+  physics.addBody( environment.leftWall, "static", {bounce = 0}  )
+  physics.addBody( environment.rightWall, "static", {bounce = 0}  )
+  physics.addBody( environment.bottomWall, "static", {bounce = 0}  )
+
+  camera:add( environment.topWall, 2 )
+  camera:add( environment.leftWall, 2 )
+  camera:add( environment.rightWall, 2 )
+  camera:add( environment.bottomWall, 2 )
+
   -- Initialize the player
   player = display.newRect( mainGroup, display.contentCenterX, display.contentCenterY,
     settings.player.size, settings.player.size )
@@ -158,84 +170,38 @@ function scene:create( event )
   player.linearDamping = settings.player.friction
   player.angularDamping = settings.player.friction
 
-  camera:add(player, 1) -- Add player to layer 1 of the camera
+  camera:add ( player, 1 ) -- Add player to layer 1 of the camera
 
-  -- Initialize environment
-    -- Temporary Border
-      environment.topWall = display.newRect( mainGroup, 0, 0, 2500, 100 )
-      environment.leftWall = display.newRect( mainGroup, 25, display.contentCenterY, 100, 1920 )
-      environment.rightWall = display.newRect( mainGroup, 1055, display.contentCenterY, 100, 1920 )
-      environment.bottomWall = display.newRect( mainGroup, 0, 1920, 2500, 100 )
-
-      physics.addBody( environment.topWall, "static", {bounce = 0} )
-      physics.addBody( environment.leftWall, "static", {bounce = 0}  )
-      physics.addBody( environment.rightWall, "static", {bounce = 0}  )
-      physics.addBody( environment.bottomWall, "static", {bounce = 0}  )
-
-  camera:add(environment.topWall, 2)
-  camera:add(environment.leftWall, 2)
-  camera:add(environment.rightWall, 2)
-  camera:add(environment.bottomWall, 2)
-
-  camera.damping = 10 -- A bit more fluid tracking
-  camera:setFocus(player) -- Set the focus to the player
-  camera:track() -- Begin auto-tracking
+  -- Start the camera
+  camera.damping = 10
+  camera:setFocus( player )
+  camera:track()
 
   --Initialize event listeners
-  sceneGroup:addEventListener( "tap", onTap )
-  Runtime:addEventListener( "enterFrame", newFrame )
+  sceneGroup:addEventListener( "tap", shoot )
 end
 
 
--- show()
+-- Runs when scene is fully loaded
 function scene:show( event )
-
-	local sceneGroup = self.view
-	local phase = event.phase
-
-	if ( phase == "will" ) then
-		-- Code here runs when the scene is still off screen (but is about to come on screen)
-
-	elseif ( phase == "did" ) then
-		-- Code here runs when the scene is entirely on screen
+  if ( event.phase == "did" ) then
     physics.start()
 	end
 end
 
 
--- hide()
+-- Runs when scene is off screen
 function scene:hide( event )
-
-	local sceneGroup = self.view
-	local phase = event.phase
-
-	if ( phase == "will" ) then
-		-- Code here runs when the scene is on screen (but is about to go off screen)
-
-	elseif ( phase == "did" ) then
-		-- Code here runs immediately after the scene goes entirely off screen
+	if ( event.phase == "did" ) then
+		-- Stop physics and remove the scene
     physics.pause()
 		composer.removeScene( "game" )
 	end
 end
 
-
--- destroy()
-function scene:destroy( event )
-
-	local sceneGroup = self.view
-	-- Code here runs prior to the removal of scene's view
-
-end
-
-
--- -----------------------------------------------------------------------------------
--- Scene event function listeners
--- -----------------------------------------------------------------------------------
+------------------------ Scene event function listeners ------------------------
 scene:addEventListener( "create", scene )
 scene:addEventListener( "show", scene )
 scene:addEventListener( "hide", scene )
-scene:addEventListener( "destroy", scene )
--- -----------------------------------------------------------------------------------
 
 return scene

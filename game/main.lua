@@ -7,5 +7,5 @@ display.setStatusBar( display.HiddenStatusBar )
 -- Seed the random number generator
 math.randomseed( os.time() )
 
--- Go to the menu screen
+-- Go to the game
 composer.gotoScene( "game" )
