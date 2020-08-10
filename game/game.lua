@@ -174,9 +174,9 @@ function scene:create( event )
   camera:track()
 
   -- Initialize the ammo count
-  for i = 0, player.ammo, 1 do
+  for i = 1, player.ammo, 1 do
     ammoDisplay[i] = display.newImageRect( settings.guns[player.gun].ammoIcon, settings.guns[player.gun].ammoIconSize.width, settings.guns[player.gun].ammoIconSize.height )
-    ammoDisplay[i].x = settings.ui.ammoCount.startPos.x + ( settings.guns[player.gun].ammoIconSpacing * i )
+    ammoDisplay[i].x = settings.ui.ammoCount.startPos.x + ( settings.guns[player.gun].ammoIconSpacing * ( i - 1 ))
     ammoDisplay[i].y = settings.ui.ammoCount.startPos.y
   end
 
