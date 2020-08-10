@@ -32,7 +32,7 @@ end
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle )
   --Initialize the shot
-  local shot = display.newPolygon( mainGroup, player.x, player.y, settings.guns[player.gun].hitbox )
+  local shot = display.newPolygon( player.x, player.y, settings.guns[player.gun].hitbox )
   shot:setFillColor( 1, 0, 0 )
   shot.rotation = toDeg( shotAngle )
   shot.anchorX = 0
@@ -122,40 +122,28 @@ function scene:create( event )
     }
   }
 
-  -- Scene Setup
-	sceneGroup = self.view
-
   -- Physics engine setup
   physics.start()
   physics.setGravity( 0, 0 )
   physics.setDrawMode( "hybrid" )  -- Overlays collision outlines on normal display objects for debug purposes
   physics.pause()  -- Temporarily pause the physics engine while scene loads
 
-	-- Set up display groups
-	backGroup = display.newGroup()
-	sceneGroup:insert( backGroup )
-
-	mainGroup = display.newGroup()
-	sceneGroup:insert( mainGroup )
-
-	uiGroup = display.newGroup()
-	sceneGroup:insert( uiGroup )
-
   -- Setup the camera
   camera = perspective.createView()
 
   --Initialize the map
-  map = display.newRect( backGroup, 0, 0, 1080, 1920 )
+  map = display.newRect( 0, 0, 1080, 1920 )
   map.anchorX = 0
   map.anchorY = 0
   map:setFillColor( 0.2, 0.2, 0.2 )
+  camera:add( map, 2 )
 
   -- Initialize environment
   -- Temporary Border
-  environment.topWall = display.newRect( backGroup, 0, 0, 2500, 100 )
-  environment.leftWall = display.newRect( backGroup, 25, display.contentCenterY, 100, 1920 )
-  environment.rightWall = display.newRect( backGroup, 1055, display.contentCenterY, 100, 1920 )
-  environment.bottomWall = display.newRect( backGroup, 0, 1920, 2500, 100 )
+  environment.topWall = display.newRect( 0, 0, 2500, 100 )
+  environment.leftWall = display.newRect( 25, display.contentCenterY, 100, 1920 )
+  environment.rightWall = display.newRect( 1055, display.contentCenterY, 100, 1920 )
+  environment.bottomWall = display.newRect( 0, 1920, 2500, 100 )
 
   physics.addBody( environment.topWall, "static", {bounce = 0} )
   physics.addBody( environment.leftWall, "static", {bounce = 0}  )
@@ -168,7 +156,7 @@ function scene:create( event )
   camera:add( environment.bottomWall, 2 )
 
   -- Initialize the player
-  player = display.newRect( mainGroup, display.contentCenterX, display.contentCenterY,
+  player = display.newRect( display.contentCenterX, display.contentCenterY,
     settings.player.size, settings.player.size )
   player.gun = settings.player.defaultGun
   player.readyToFire = true
@@ -186,14 +174,14 @@ function scene:create( event )
   camera:track()
 
   -- Initialize the ammo count
-  for i = 0, player.ammo, 1 do
+  for i = 1, player.ammo, 1 do
     ammoDisplay[i] = display.newImageRect( settings.guns[player.gun].ammoIcon, settings.guns[player.gun].ammoIconSize.width, settings.guns[player.gun].ammoIconSize.height )
-    ammoDisplay[i].x = settings.ui.ammoCount.startPos.x + ( settings.guns[player.gun].ammoIconSpacing * i )
+    ammoDisplay[i].x = settings.ui.ammoCount.startPos.x + ( settings.guns[player.gun].ammoIconSpacing * ( i - 1 ))
     ammoDisplay[i].y = settings.ui.ammoCount.startPos.y
   end
 
   --Initialize event listeners
-  sceneGroup:addEventListener( "tap", shoot )
+  Runtime:addEventListener( "tap", shoot )
 end
 
 
