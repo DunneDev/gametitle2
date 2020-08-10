@@ -73,15 +73,20 @@ function shoot( event )
     --
     player.readyToFire = false
     if(player.ammo > 1)then
+       ammoDisplay[player.ammo].isVisible = false
        player.ammo = player.ammo - 1
        timer.performWithDelay( settings.guns[player.gun].attackSpeed, function()
          player.readyToFire = true
        end )
     else -- reloading
         print( "reloading ... " )
+        ammoDisplay[player.ammo].isVisible = false
         timer.performWithDelay( settings.guns[player.gun].reloadTime, function()
          player.ammo = settings.guns[player.gun].magazine
          player.readyToFire = true
+         for i = 1, player.ammo, 1 do
+            ammoDisplay[i].isVisible = true
+         end
          print( "reloaded!" )
        end )
     end
