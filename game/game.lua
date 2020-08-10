@@ -22,7 +22,7 @@ local uiGroup
 
 ------------------------ Utility functions ------------------------
 
--- Convert degrees to radians
+-- Convert radians to degrees
 function toDeg( rad )
  return rad * 57.2958
 end
@@ -32,11 +32,11 @@ end
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle )
   --Initialize the shot
-  local layer = camera:layer( 1 )
-  local shot = display.newPolygon( mainGroup, player.x + layer.x, player.y + layer.y, settings.guns[player.gun].hitbox )
+  local shot = display.newPolygon( mainGroup, player.x, player.y, settings.guns[player.gun].hitbox )
   shot:setFillColor( 1, 0, 0 )
   shot.rotation = toDeg( shotAngle )
   shot.anchorX = 0
+  camera:add(shot, 1)
 
   player.rotation = toDeg( shotAngle ) -- Set player rotation
 
@@ -51,7 +51,6 @@ end
 
 -- Function that handles shooting
 function shoot( event )
-  print("fired a shot")
   if( player.readyToFire == true ) then -- Only shoot if the player is able to
     -- Calculate shot angle
     local layer = camera:layer(1)
@@ -110,7 +109,15 @@ function scene:create( event )
         attackSpeed = 500, -- minimum time between shots
         hitbox = {0,0, 500,-300, 500,300},
         activeTime = 200,
-        ammoIcon = 
+        ammoIcon = "Assets/Pixel/weaponAssets/shotgunAmmo.png",
+        ammoIconSize = {width = 50, height = 132}, -- vertical image, 2.65 ratio
+        ammoIconSpacing = 70
+      }
+    },
+
+    ui = {
+      ammoCount = {
+        startPos = {x = 120, y = 1800}
       }
     }
   }
@@ -138,17 +145,17 @@ function scene:create( event )
   camera = perspective.createView()
 
   --Initialize the map
-  map = display.newRect( backGroup, 0, 0, 1080, 1920)
+  map = display.newRect( backGroup, 0, 0, 1080, 1920 )
   map.anchorX = 0
   map.anchorY = 0
   map:setFillColor( 0.2, 0.2, 0.2 )
 
   -- Initialize environment
   -- Temporary Border
-  environment.topWall = display.newRect( mainGroup, 0, 0, 2500, 100 )
-  environment.leftWall = display.newRect( mainGroup, 25, display.contentCenterY, 100, 1920 )
-  environment.rightWall = display.newRect( mainGroup, 1055, display.contentCenterY, 100, 1920 )
-  environment.bottomWall = display.newRect( mainGroup, 0, 1920, 2500, 100 )
+  environment.topWall = display.newRect( backGroup, 0, 0, 2500, 100 )
+  environment.leftWall = display.newRect( backGroup, 25, display.contentCenterY, 100, 1920 )
+  environment.rightWall = display.newRect( backGroup, 1055, display.contentCenterY, 100, 1920 )
+  environment.bottomWall = display.newRect( backGroup, 0, 1920, 2500, 100 )
 
   physics.addBody( environment.topWall, "static", {bounce = 0} )
   physics.addBody( environment.leftWall, "static", {bounce = 0}  )
@@ -171,12 +178,19 @@ function scene:create( event )
   player.linearDamping = settings.player.friction
   player.angularDamping = settings.player.friction
 
-  camera:add ( player, 1 ) -- Add player to layer 1 of the camera
+  camera:add ( player, 1 ) -- Add player to layer 2 of the camera
 
   -- Start the camera
   camera.damping = 10
   camera:setFocus( player )
   camera:track()
+
+  -- Initialize the ammo count
+  for i = 0, player.ammo, 1 do
+    ammoDisplay[i] = display.newImageRect( settings.guns[player.gun].ammoIcon, settings.guns[player.gun].ammoIconSize.width, settings.guns[player.gun].ammoIconSize.height )
+    ammoDisplay[i].x = settings.ui.ammoCount.startPos.x + ( settings.guns[player.gun].ammoIconSpacing * i )
+    ammoDisplay[i].y = settings.ui.ammoCount.startPos.y
+  end
 
   --Initialize event listeners
   sceneGroup:addEventListener( "tap", shoot )
