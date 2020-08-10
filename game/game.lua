@@ -10,7 +10,7 @@ local settings
 local camera
 
 local player
-local bullets = {}
+local ammoDisplay = {}
 
 local map
 local environment = {}
@@ -109,7 +109,8 @@ function scene:create( event )
         reloadTime = 2000, -- miliseconds
         attackSpeed = 500, -- minimum time between shots
         hitbox = {0,0, 500,-300, 500,300},
-        activeTime = 200
+        activeTime = 200,
+        ammoIcon = 
       }
     }
   }
