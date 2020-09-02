@@ -8,6 +8,8 @@ local scene = composer.newScene()
 ------------------------ Initialize variables ------------------------
 local settings
 local camera
+local pseudoQuadrant = {} -- need quadrants based on the origin being the player
+local shotQuadrant
 
 local player
 local ammoDisplay = {}
@@ -26,9 +28,37 @@ end
 ------------------------ Game Functions ------------------------
 
 -- Fires guns that don't have projectiles
-function shootNonProjectile( shotAngle )
-  --Load the shot
-  local shot = display.newPolygon( player.x, player.y, settings.guns[player.gun].shape )
+function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, each gun will probably have its own function
+  --Load the pellets
+  local pellets = {}
+  local testLine = {}
+
+  for i = 1, 5, 1 do
+    pellets[i] = physics.rayCast( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
+                                (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y, "closest" )
+    if ( pellets[i] ) then -- if they hit a display object
+      testLine[i] = display.newLine( player.x, player.y, pellets[i][1].position.x, pellets[i][1].position.y )
+      print( "Pellet " .. i .. " Hit ", pellets[i][1].object.type )
+      onBulletCollision( pellets[i][1].object )
+    else -- if they miss
+      testLine[i] = display.newLine( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
+                                   (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y )
+      print( "miss" )
+    end
+    testLine[i]:setStrokeColor( 20, 19, 0 ) -- why the fuck is this yellow??
+    camera:add( testLine[i], 2 )
+  end
+
+  player.rotation = toDeg( shotAngle ) -- Set player rotation
+
+  -- Remove the shot
+  timer.performWithDelay( settings.guns[player.gun].activeTime, function()
+    for i = 1, #testLine, 1 do
+      testLine[i]:removeSelf()
+      testLine[i] = nil
+    end
+  end )
+--[[  local shot = display.newPolygon( player.x, player.y, settings.guns[player.gun].shape )
   shot:setFillColor( 1, 0, 0 )
   shot.rotation = toDeg( shotAngle )
   shot.anchorX = 0
@@ -45,7 +75,7 @@ function shootNonProjectile( shotAngle )
   timer.performWithDelay( settings.guns[player.gun].activeTime, function()
     shot:removeSelf()
     shot = nil
-  end )
+  end )]]
 end
 
  -- Spawns enemy in game
@@ -74,6 +104,25 @@ function shoot( event )
     local xDiff = event.x - ( player.x + layer.x )
     local yDiff = event.y - ( player.y + layer.y )
     local angle = math.atan2( yDiff, xDiff )
+    print(toDeg(angle)) -- q1 is -90 to 0
+                        -- q2 is 0 to 90
+                        -- q3 is 90 to 180
+                        -- q4 is -180 to -90
+
+    -- Calculate pseudoQuadrant of the tap
+    if ( display.contentCenterX - event.x < 0 and display.contentCenterY - event.y > 0 ) then -- Quadrant 1
+      shotQuadrant = 1 -- pseudoQuadrant[1]
+      print("Quadrant: " .. shotQuadrant)
+    elseif ( display.contentCenterX - event.x < 0 and display.contentCenterY - event.y < 0 ) then -- Quadrant 2
+      shotQuadrant = 2 -- pseudoQuadrant[2]
+      print("Quadrant: " .. shotQuadrant)
+    elseif ( display.contentCenterX - event.x > 0 and display.contentCenterY - event.y < 0 ) then -- Quadrant 3
+      shotQuadrant = 3 -- pseudoQuadrant[3]
+      print("Quadrant: " .. shotQuadrant)
+    else                                                                                         -- Quadrant 4
+      shotQuadrant = 4 -- pseudoQuadrant[4]
+      print("Quadrant: " .. shotQuadrant)
+    end
 
     if ( settings.guns[player.gun].projectile ) then
       -- Projectile weapons
@@ -109,10 +158,10 @@ function shoot( event )
 end
 
 -- Handle bullet collision
-function onBulletCollision( self, event )
-  if ( event.other.type == "enemy" ) then
-    local enemy = event.other
-    local slot = enemy.slot
+function onBulletCollision( victim )
+  if ( victim.type == "enemy" ) then
+    local enemy = victim
+    local slot = victim.slot
 
     enemy:removeSelf()
     table.remove( enemies, slot )
@@ -148,6 +197,8 @@ function scene:create( event )
         magazine = 6,
         reloadTime = 2000, -- miliseconds
         attackSpeed = 500, -- minimum time between shots
+        range = 400, -- Hypotneus value of the shot angle
+        spread = { -1/3, -1/6, 0, 1/6, 1/3 },
         shape = {0,0, 500,-300, 500,300},
         hitbox = {-250,0, 250,-300, 250,300},
         activeTime = 200,
@@ -187,6 +238,11 @@ function scene:create( event )
   environment.rightWall = display.newRect( 1055, display.contentCenterY, 100, 1920 )
   environment.bottomWall = display.newRect( 0, 1920, 2500, 100 )
 
+  environment.topWall.type = "wall"
+  environment.leftWall.type = "wall"
+  environment.rightWall.type = "wall"
+  environment.bottomWall.type = "wall"
+
   physics.addBody( environment.topWall, "static", {bounce = 0} )
   physics.addBody( environment.leftWall, "static", {bounce = 0}  )
   physics.addBody( environment.rightWall, "static", {bounce = 0}  )
@@ -201,7 +257,7 @@ function scene:create( event )
   environment.enemySpawns = {
     { x = 600, y = 200 },
     { x = 400, y = 400 },
-    { x = 800, y = 1500}
+    { x = 800, y = 1500 }
   }
 
   -- Load the player
