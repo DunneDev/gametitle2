@@ -32,6 +32,8 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
   --Load the pellets
   local pellets = {}
   local testLine = {}
+  local shotgunBlast = audio.loadStream("Assets/soundEFX/shotgunBlast.wav")
+  audio.play( shotgunBlast, { channel=1 , loops=0, duration = 430 })
 
   for i = 1, settings.guns[player.gun].pelletCount, 1 do
     pellets[i] = physics.rayCast( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
@@ -83,6 +85,7 @@ function spawnEnemy()
   enemy.type = "enemy"
   enemy.slot = #enemies + 1
   enemy.HP = settings.enemies.enemyName.maxHP
+  enemy:setFillColor(1,0,0)
 
   camera:add( enemy, 1 )
 
@@ -262,6 +265,7 @@ function scene:create( event )
   player.gun = settings.player.defaultGun
   player.readyToFire = true
   player.ammo = settings.guns[player.gun].magazine
+  player:setFillColor(0,0,1)
 
   physics.addBody( player, "dynamic", {bounce = 0} )
   player.linearDamping = settings.player.friction
