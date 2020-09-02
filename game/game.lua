@@ -33,13 +33,13 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
   local pellets = {}
   local testLine = {}
 
-  for i = 1, 5, 1 do
+  for i = 1, settings.guns[player.gun].pelletCount, 1 do
     pellets[i] = physics.rayCast( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
                                 (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y, "closest" )
     if ( pellets[i] ) then -- if they hit a display object
       testLine[i] = display.newLine( player.x, player.y, pellets[i][1].position.x, pellets[i][1].position.y )
       print( "Pellet " .. i .. " Hit ", pellets[i][1].object.type )
-      onBulletCollision( pellets[i][1].object )
+      onBulletCollision( pellets[i][1].object, settings.guns[player.gun] )
     else -- if they miss
       testLine[i] = display.newLine( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
                                    (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y )
@@ -48,8 +48,6 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
     testLine[i]:setStrokeColor( 20, 19, 0 ) -- why the fuck is this yellow??
     camera:add( testLine[i], 2 )
   end
-
-  player.rotation = toDeg( shotAngle ) -- Set player rotation
 
   -- Remove the shot
   timer.performWithDelay( settings.guns[player.gun].activeTime, function()
@@ -84,6 +82,7 @@ function spawnEnemy()
   local enemy = display.newRect( spawnLocation.x, spawnLocation.y, settings.enemies.enemyName.size, settings.enemies.enemyName.size )
   enemy.type = "enemy"
   enemy.slot = #enemies + 1
+  enemy.HP = settings.enemies.enemyName.maxHP
 
   camera:add( enemy, 1 )
 
@@ -109,20 +108,11 @@ function shoot( event )
                         -- q3 is 90 to 180
                         -- q4 is -180 to -90
 
-    -- Calculate pseudoQuadrant of the tap
-    if ( display.contentCenterX - event.x < 0 and display.contentCenterY - event.y > 0 ) then -- Quadrant 1
-      shotQuadrant = 1 -- pseudoQuadrant[1]
-      print("Quadrant: " .. shotQuadrant)
-    elseif ( display.contentCenterX - event.x < 0 and display.contentCenterY - event.y < 0 ) then -- Quadrant 2
-      shotQuadrant = 2 -- pseudoQuadrant[2]
-      print("Quadrant: " .. shotQuadrant)
-    elseif ( display.contentCenterX - event.x > 0 and display.contentCenterY - event.y < 0 ) then -- Quadrant 3
-      shotQuadrant = 3 -- pseudoQuadrant[3]
-      print("Quadrant: " .. shotQuadrant)
-    else                                                                                         -- Quadrant 4
-      shotQuadrant = 4 -- pseudoQuadrant[4]
-      print("Quadrant: " .. shotQuadrant)
-    end
+    -- Move player
+    local xForce = math.cos( angle ) * settings.guns[player.gun].recoil * -1
+    local yForce = math.sin( angle ) * settings.guns[player.gun].recoil * -1
+    player:applyLinearImpulse( xForce, yForce, player.x, player.y )
+    player.rotation = angle -- Set player rotation in rads
 
     if ( settings.guns[player.gun].projectile ) then
       -- Projectile weapons
@@ -131,10 +121,6 @@ function shoot( event )
       shootNonProjectile( angle )
     end
 
-    -- Move player
-    local xForce = math.cos( angle ) * settings.guns[player.gun].recoil * -1
-    local yForce = math.sin( angle ) * settings.guns[player.gun].recoil * -1
-    player:applyLinearImpulse( xForce, yForce, player.x, player.y )
 
     -- Disable shooting
     player.readyToFire = false
@@ -158,13 +144,18 @@ function shoot( event )
 end
 
 -- Handle bullet collision
-function onBulletCollision( victim )
+function onBulletCollision( victim, source ) -- thing getting hit, and the thing hitting it
   if ( victim.type == "enemy" ) then
-    local enemy = victim
-    local slot = victim.slot
+    local xForce = math.cos( player.rotation ) * source.knockback --* -1
+    local yForce = math.sin( player.rotation ) * source.knockback --* -1
+    victim:applyLinearImpulse( xForce, yForce, victim.x, victim.y )
 
-    enemy:removeSelf()
-    table.remove( enemies, slot )
+    victim.HP = victim.HP - source.damage
+    print(victim.type .. " took " .. source.damage .. " damage from " .. source.name)
+    if (victim.HP <= 0) then -- enemy death
+      victim:removeSelf()
+      table.remove( enemies, victim.slot )
+    end
   end
 end
 
@@ -186,19 +177,24 @@ function scene:create( event )
 
     enemies = {
       enemyName = {
-        size = 125
+        size = 125,
+        maxHP = 20
       }
     },
 
     guns = {
       shotgun = {
+        name = "shotgun",
         projectile = false,
         recoil = 5, -- distance the character travels on attack
+        damage = 5, -- damage per pellet
+        knockback = 1, -- distance enemy moves back when hit
         magazine = 6,
         reloadTime = 2000, -- miliseconds
         attackSpeed = 500, -- minimum time between shots
         range = 400, -- Hypotneus value of the shot angle
-        spread = { -1/3, -1/6, 0, 1/6, 1/3 },
+        pelletCount = 5, -- number of pellets per shot
+        spread = { -1/3, -1/6, 0, 1/6, 1/3 }, -- spread of the pellets
         shape = {0,0, 500,-300, 500,300},
         hitbox = {-250,0, 250,-300, 250,300},
         activeTime = 200,
