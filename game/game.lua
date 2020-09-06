@@ -32,8 +32,19 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
   --Load the pellets
   local pellets = {}
   local testLine = {}
-  local shotgunBlast = audio.loadStream("Assets/soundEFX/shotgunBlast.wav")
-  audio.play( shotgunBlast, { channel=1 , loops=0, duration = 430 })
+
+  audio.play( settings.guns[player.gun].audio.shotgunBlast, { duration = 430 }) -- static placeholder value
+  
+    if (player.ammo > 1) then
+      timer.performWithDelay( 430, function()
+        audio.play( settings.guns[player.gun].audio.shotgunPump )
+      end)
+    else
+      timer.performWithDelay( 430, function()
+        audio.play( settings.guns[player.gun].audio.shotgunReload, { duration = settings.guns[player.gun].reloadTime })
+      end)
+    end
+
 
   for i = 1, settings.guns[player.gun].pelletCount, 1 do
     pellets[i] = physics.rayCast( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
@@ -193,8 +204,8 @@ function scene:create( event )
         damage = 5, -- damage per pellet
         knockback = 1, -- distance enemy moves back when hit
         magazine = 6,
-        reloadTime = 2000, -- miliseconds
-        attackSpeed = 500, -- minimum time between shots
+        reloadTime = 3000, -- miliseconds
+        attackSpeed = 1000, -- minimum time between shots
         range = 400, -- Hypotneus value of the shot angle
         pelletCount = 5, -- number of pellets per shot
         spread = { -1/3, -1/6, 0, 1/6, 1/3 }, -- spread of the pellets
@@ -203,7 +214,12 @@ function scene:create( event )
         activeTime = 200,
         ammoIcon = "Assets/Pixel/weaponAssets/shotgunAmmo.png",
         ammoIconSize = {width = 50, height = 132}, -- vertical image, 2.65 ratio
-        ammoIconSpacing = 70
+        ammoIconSpacing = 70,
+        audio = {
+          shotgunReload = audio.loadStream("Assets/soundEFX/shotgunReload.wav"),
+          shotgunPump = audio.loadStream("Assets/soundEFX/shotgunPump.wav"),
+          shotgunBlast = audio.loadStream("Assets/soundEFX/shotgunBlast.wav")
+        }
       }
     },
 
