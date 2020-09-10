@@ -34,7 +34,6 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
   local testLine = {}
 
   audio.play( settings.guns[player.gun].audio.shotgunBlast, { duration = 430 }) -- static placeholder value
-  
     if (player.ammo > 1) then
       timer.performWithDelay( 430, function()
         audio.play( settings.guns[player.gun].audio.shotgunPump )
@@ -127,6 +126,7 @@ function shoot( event )
     local yForce = math.sin( angle ) * settings.guns[player.gun].recoil * -1
     player:applyLinearImpulse( xForce, yForce, player.x, player.y )
     player.rotation = angle -- Set player rotation in rads
+
 
     if ( settings.guns[player.gun].projectile ) then
       -- Projectile weapons
@@ -223,6 +223,36 @@ function scene:create( event )
       }
     },
 
+    environment = {
+      standardThickness = 50, -- standardThickness of a wall
+      icyMountains = {
+        majorBorders = { -- twice as thick as regular walls
+          topBorderSize = 3000, -- anchored to origin
+          leftBorderSize = 3000,
+          rightBorderSize = 3000
+        },
+        internalWalls = {
+          wall1Size = 400,
+          wall2Size = 750,
+          wall3Size = 400,
+          wall4Size = 400,
+          wall5Width = 400,  -- wall 5 is a custom polygon, this value refers to the absolute width of the shape
+          wall5Height = 300, -- wall 5 is a custom polygon, this value refers to the absolute height of the shape
+                             -- the above two values are calculated from the distance between verteces, not set,
+                             -- changing them will just fuck up placement of the wall
+          wall6Size = 400,
+          wall7Size = 300,
+          wall8Size = 600,
+          wall9Size = 400
+        },
+        landIslands = {
+          island1Size = 150,
+          island2Size = 200,
+          island3Size = 150
+        }
+      }
+    },
+
     ui = {
       ammoCount = {
         startPos = {x = 120, y = 1800}
@@ -240,33 +270,97 @@ function scene:create( event )
   camera = perspective.createView()
 
   --Load the map
-  map = display.newRect( 0, 0, 1080, 1920 )
+  map = display.newRect( -1550, 0, 5000, 5000 )
   map.anchorX = 0
   map.anchorY = 0
   map:setFillColor( 0.2, 0.2, 0.2 )
   camera:add( map, 2 )
+  -----------------------------------------------------------------------------------------------------
+  ---------------------------------------- LOAD ENVIRONMENT -------------------------------------------
+  -----------------------------------------------------------------------------------------------------
 
-  -- Load environment
-  -- Temporary Border
-  environment.topWall = display.newRect( 0, 0, 2500, 100 )
-  environment.leftWall = display.newRect( 25, display.contentCenterY, 100, 1920 )
-  environment.rightWall = display.newRect( 1055, display.contentCenterY, 100, 1920 )
-  environment.bottomWall = display.newRect( 0, 1920, 2500, 100 )
+  -- ICY MOUNTAINS
+    -- major borders
+      environment.topBorder = display.newRect( 0, 0, settings.environment.icyMountains.majorBorders.topBorderSize, settings.environment.standardThickness * 2 ) -- anchor wall
+      environment.leftBorder = display.newRect( (environment.topBorder.width / 2 + settings.environment.standardThickness)*-1,
+        settings.environment.icyMountains.majorBorders.leftBorderSize/2 - settings.environment.standardThickness,
+        settings.environment.standardThickness * 2, settings.environment.icyMountains.majorBorders.leftBorderSize ) -- anchored to topBorder
+      environment.rightBorder = display.newRect( environment.topBorder.width / 2 + settings.environment.standardThickness,
+        settings.environment.icyMountains.majorBorders.rightBorderSize/2 - settings.environment.standardThickness,
+        settings.environment.standardThickness * 2, settings.environment.icyMountains.majorBorders.rightBorderSize ) -- anchored to topBorder
 
-  environment.topWall.type = "wall"
-  environment.leftWall.type = "wall"
-  environment.rightWall.type = "wall"
-  environment.bottomWall.type = "wall"
+      environment.topBorder.type = "wall"
+      environment.leftBorder.type = "wall"
+      environment.rightBorder.type = "wall"
 
-  physics.addBody( environment.topWall, "static", {bounce = 0} )
-  physics.addBody( environment.leftWall, "static", {bounce = 0}  )
-  physics.addBody( environment.rightWall, "static", {bounce = 0}  )
-  physics.addBody( environment.bottomWall, "static", {bounce = 0}  )
+      physics.addBody( environment.topBorder, "static", {bounce = 0} )
+      physics.addBody( environment.leftBorder, "static", {bounce = 0}  )
+      physics.addBody( environment.rightBorder, "static", {bounce = 0}  )
 
-  camera:add( environment.topWall, 2 )
-  camera:add( environment.leftWall, 2 )
-  camera:add( environment.rightWall, 2 )
-  camera:add( environment.bottomWall, 2 )
+      camera:add( environment.topBorder, 2 )
+      camera:add( environment.leftBorder, 2 )
+      camera:add( environment.rightBorder, 2 )
+
+    -- internal walls
+      environment.wall1 = display.newRect( settings.environment.icyMountains.majorBorders.topBorderSize/6, settings.environment.icyMountains.internalWalls.wall1Size/2 + settings.environment.standardThickness, settings.environment.standardThickness, settings.environment.icyMountains.internalWalls.wall1Size ) -- anchored to topBorder
+      environment.wall2 = display.newRect( environment.wall1.x - settings.environment.icyMountains.internalWalls.wall2Size/2 + settings.environment.standardThickness/2, environment.wall1.y + environment.wall1.height/2 + settings.environment.standardThickness/2, settings.environment.icyMountains.internalWalls.wall2Size, settings.environment.standardThickness ) -- anchored to wall 1
+      environment.wall3 = display.newRect( environment.wall2.x, environment.wall2.y + settings.environment.icyMountains.internalWalls.wall3Size/2 + settings.environment.standardThickness/2, settings.environment.standardThickness, settings.environment.icyMountains.internalWalls.wall3Size ) -- anchored to wall 2
+      environment.wall5 = display.newPolygon( environment.wall3.x - settings.environment.icyMountains.internalWalls.wall5Width/2 + settings.environment.standardThickness/2, environment.wall3.y + environment.wall3.height/2 + settings.environment.icyMountains.internalWalls.wall5Height/2,   {-200, -100, 200, -100, 200, 200, -200, 0} ) -- (x, y, verticies), anchored to wall 3
+      environment.wall6 = display.newRect( 500, 1025, settings.environment.standardThickness, 400 )
+      environment.wall7 = display.newRect( environment.rightBorder.x - settings.environment.icyMountains.internalWalls.wall7Size/2 - settings.environment.standardThickness, settings.environment.icyMountains.majorBorders.rightBorderSize*1/3, settings.environment.icyMountains.internalWalls.wall7Size, settings.environment.standardThickness ) -- attached to rightBorder
+      environment.wall8 = display.newRect( -900, 1600, settings.environment.standardThickness, 600 )
+      environment.wall9 = display.newRect( 675, 1250, 400, settings.environment.standardThickness )
+
+      environment.wall1.type = "wall"
+      environment.wall2.type = "wall"
+      environment.wall3.type = "wall"
+      environment.wall5.type = "wall"
+      environment.wall6.type = "wall"
+      environment.wall7.type = "wall"
+      environment.wall8.type = "wall"
+      environment.wall9.type = "wall"
+
+      physics.addBody( environment.wall1, "static", {bounce = 0} )
+      physics.addBody( environment.wall2, "static", {bounce = 0} )
+      physics.addBody( environment.wall3, "static", {bounce = 0} )
+      physics.addBody( environment.wall5, "static", {bounce = 0} )
+      physics.addBody( environment.wall6, "static", {bounce = 0} )
+      physics.addBody( environment.wall7, "static", {bounce = 0} )
+      physics.addBody( environment.wall8, "static", {bounce = 0} )
+      physics.addBody( environment.wall9, "static", {bounce = 0} )
+
+      camera:add( environment.wall1, 2 )
+      camera:add( environment.wall2, 2 )
+      camera:add( environment.wall3, 2 )
+      camera:add( environment.wall5, 2 )
+      camera:add( environment.wall6, 2 )
+      camera:add( environment.wall7, 2 )
+      camera:add( environment.wall8, 2 )
+      camera:add( environment.wall9, 2 )
+
+   -- land islands
+      environment.island1 = display.newRect( environment.topBorder.width /-4, environment.topBorder.y + settings.environment.icyMountains.landIslands.island1Size/2 + settings.environment.standardThickness, settings.environment.standardThickness*2, settings.environment.icyMountains.landIslands.island1Size ) -- anchored to topBorder
+      environment.island2 = display.newRect( settings.environment.icyMountains.majorBorders.topBorderSize /3, settings.environment.icyMountains.majorBorders.rightBorderSize /5, settings.environment.icyMountains.landIslands.island2Size, settings.environment.standardThickness*2 ) -- x is anchored to topBorder, y is anchored to rightBorder
+      environment.island3 = display.newRect( settings.environment.icyMountains.majorBorders.topBorderSize * 2/-5, settings.environment.icyMountains.majorBorders.leftBorderSize /5, settings.environment.icyMountains.landIslands.island3Size, settings.environment.standardThickness*2 ) -- x is anchored to topBorder, y is anchored to leftBorder
+
+      environment.island1.type = "wall"
+      environment.island2.type = "wall"
+      environment.island3.type = "wall"
+
+      physics.addBody( environment.island1, "static", {bounce = 0} )
+      physics.addBody( environment.island2, "static", {bounce = 0} )
+      physics.addBody( environment.island3, "static", {bounce = 0} )
+
+      camera:add( environment.island1, 2 )
+      camera:add( environment.island2, 2 )
+      camera:add( environment.island3, 2 )
+
+  -- TERRAIN
+    -- TRAPS
+      environment.iceTrap = display.newRect( -900, 600, 300, 300 )
+      environment.iceTrap.type = "trap"
+      camera:add( environment.iceTrap, 2 )
+      local iceTrapBounds = environment.iceTrap.contentBounds
 
   -- Load enemy spawns
   environment.enemySpawns = {
@@ -276,7 +370,7 @@ function scene:create( event )
   }
 
   -- Load the player
-  player = display.newRect( display.contentCenterX, display.contentCenterY,
+  player = display.newRect( display.contentCenterX - 1000, display.contentCenterY - 200,
     settings.player.size, settings.player.size )
   player.gun = settings.player.defaultGun
   player.readyToFire = true
@@ -311,7 +405,7 @@ function scene:show( event )
   if ( event.phase == "did" ) then
     physics.start()
     -- START SPAWNING ENEMIES CHANGE THIS NOT FUTURE PROOF
-    timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
+    --timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
 	end
 end
 
