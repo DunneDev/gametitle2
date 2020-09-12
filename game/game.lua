@@ -17,6 +17,9 @@ local ammoDisplay = {}
 local map
 local environment = {}
 local enemies = {}
+local traps = {}
+local gameLoopCounter = 0
+local numberOfEnemies = 0
 
 ------------------------ Utility functions ------------------------
 
@@ -26,6 +29,32 @@ function toDeg( rad )
 end
 
 ------------------------ Game Functions ------------------------
+
+-- when anything takes damage
+function damage( victim, damage )
+  if ( victim.type == "enemy" )then -- enemy takes damage
+    victim.HP = victim.HP - damage
+
+    if ( victim.HP <= 0 )then -- enemy death
+      print("enemy died")
+      victim:removeSelf()
+      table.remove( enemies, victim.slot )
+    end
+
+  elseif ( victim.type == "player" )then -- player takes damage
+    victim.HP = victim.HP - damage
+
+    if ( victim.HP <= 0 )then -- player death
+      print("player died")
+      -- "freeze" the game (except idle animations)
+      Runtime:removeEventListener( "enterFrame", gameLoop ) -- what the fuck this doesnt do anything
+      -- disable player input
+      player.readyToFire = false
+      -- send to an end of run scene after a few seconds
+
+    end
+  end
+end
 
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, each gun will probably have its own function
@@ -91,9 +120,9 @@ end
  -- Spawns enemy in game
 function spawnEnemy()
   local spawnLocation = environment.enemySpawns[ math.random( #environment.enemySpawns ) ]
-  local enemy = display.newRect( spawnLocation.x, spawnLocation.y, settings.enemies.enemyName.size, settings.enemies.enemyName.size )
+  local enemy = display.newCircle( spawnLocation.x, spawnLocation.y, settings.enemies.enemyName.size )
   enemy.type = "enemy"
-  enemy.slot = #enemies + 1
+  enemy.slot = numberOfEnemies + 1
   enemy.HP = settings.enemies.enemyName.maxHP
   enemy:setFillColor(1,0,0)
 
@@ -125,7 +154,7 @@ function shoot( event )
     local xForce = math.cos( angle ) * settings.guns[player.gun].recoil * -1
     local yForce = math.sin( angle ) * settings.guns[player.gun].recoil * -1
     player:applyLinearImpulse( xForce, yForce, player.x, player.y )
-    player.rotation = angle -- Set player rotation in rads
+    player.rotation = (toDeg(angle)) -- Set player rotation
 
 
     if ( settings.guns[player.gun].projectile ) then
@@ -160,21 +189,55 @@ end
 -- Handle bullet collision
 function onBulletCollision( victim, source ) -- thing getting hit, and the thing hitting it
   if ( victim.type == "enemy" ) then
-    local xForce = math.cos( player.rotation ) * source.knockback --* -1
-    local yForce = math.sin( player.rotation ) * source.knockback --* -1
-    victim:applyLinearImpulse( xForce, yForce, victim.x, victim.y )
+    local xForce = math.cos( player.rotation ) * source.knockback
+    local yForce = math.sin( player.rotation ) * source.knockback
+    victim:applyLinearImpulse( xForce, yForce, victim.x, victim.y ) -- knocks the victim back
 
-    victim.HP = victim.HP - source.damage
+    damage( victim, source.damage ) -- deals damage to enemy
     print(victim.type .. " took " .. source.damage .. " damage from " .. source.name)
-    if (victim.HP <= 0) then -- enemy death
-      victim:removeSelf()
-      table.remove( enemies, victim.slot )
-    end
   end
-end
+ end
+
+ -- Handle stepping on traps
+ function trapTriggered( victim, trap )
+   local layer = camera:layer(1) -- i guess this is unnecessary?
+   local dx
+   local dy
+
+   if ( victim.type == "player" ) then -- if player steps on trap
+     dx = victim.x - trap.x -- I dont understand why i dont need to add the layer.x value, i did for the rectangle method
+     dy = victim.y - trap.y
+   elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
+     dx = victim.x - trap.x
+     dy = victim.y - trap.y
+   end
+
+   local distance = math.sqrt( dx*dx + dy*dy )
+   local objectSize = (trap.contentWidth/2) + (victim.contentWidth/2)
+
+   if ( distance < objectSize ) then
+      damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+   end
+ end
+--[[ function trapTriggered( victim, trap )
+   local layer = camera:layer(1)
+
+   if ( victim.type == "player" ) then -- if player steps on trap
+     if ( trap.contentBounds.xMin <= (victim.x + layer.x) and trap.contentBounds.xMax >= (victim.x + layer.x) and
+          trap.contentBounds.yMin <= (victim.y + layer.y) and trap.contentBounds.yMax >= (victim.y + layer.y) ) then
+          print("you died")
+          damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+     end
+   elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
+     if ( trap.contentBounds.xMin <= (victim.x) and trap.contentBounds.xMax >= (victim.x) and
+          trap.contentBounds.yMin <= (victim.y) and trap.contentBounds.yMax >= (victim.y) ) then
+          print("enemy died")
+          damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+     end
+   end
+ end]]
 
 ------------------------ Scene Functions ------------------------
-
 -- create()
 function scene:create( event )
   -- Load settings
@@ -184,14 +247,15 @@ function scene:create( event )
     },
 
     player = {
-      size = 125,
+      size = 60,
       defaultGun = "shotgun",
-      friction = 3
+      friction = 3,
+      maxHP = 100
     },
 
     enemies = {
       enemyName = {
-        size = 125,
+        size = 60,
         maxHP = 20
       }
     },
@@ -357,24 +421,27 @@ function scene:create( event )
 
   -- TERRAIN
     -- TRAPS
-      environment.iceTrap = display.newRect( -900, 600, 300, 300 )
+      environment.iceTrap = display.newCircle( -900, 600, 150 )
       environment.iceTrap.type = "trap"
+      environment.iceTrap.slot = #traps + 1
       camera:add( environment.iceTrap, 2 )
-      local iceTrapBounds = environment.iceTrap.contentBounds
+      table.insert( traps, environment.iceTrap )
+      --local iceTrapBounds = environment.iceTrap.contentBounds
 
   -- Load enemy spawns
   environment.enemySpawns = {
-    { x = 600, y = 200 },
-    { x = 400, y = 400 },
-    { x = 800, y = 1500 }
+    --{ x = 600, y = 200 },
+    --{ x = 400, y = 400 },
+    { x = -600, y = 600 }
   }
 
   -- Load the player
-  player = display.newRect( display.contentCenterX - 1000, display.contentCenterY - 200,
-    settings.player.size, settings.player.size )
+  player = display.newCircle( display.contentCenterX - 1000, display.contentCenterY - 200, settings.player.size )
   player.gun = settings.player.defaultGun
   player.readyToFire = true
   player.ammo = settings.guns[player.gun].magazine
+  player.type = "player"
+  player.HP = settings.player.maxHP
   player:setFillColor(0,0,1)
 
   physics.addBody( player, "dynamic", {bounce = 0} )
@@ -403,9 +470,35 @@ end
 -- Runs when scene is fully loaded
 function scene:show( event )
   if ( event.phase == "did" ) then
+    -- start the physics engine
     physics.start()
     -- START SPAWNING ENEMIES CHANGE THIS NOT FUTURE PROOF
-    --timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
+    timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
+
+    -- Initialize game loop
+    local function gameLoop( event ) -- checks for certain events every frame
+                                     -- need to slow down how often it checks
+                                     -- event.time = time passed in miliseconds
+      gameLoopCounter = gameLoopCounter + 1
+      if ( gameLoopCounter % 4 == 0 )then -- runs the code every 15 frames instead of 60
+
+        for i = 1, #traps, 1 do -- check if player is inside any of the traps
+          trapTriggered( player, traps[i] )
+        end
+
+        for i = 1, #enemies, 1 do -- check if any enemy
+          for k = 1, #traps, 1 do -- is inside any of the traps
+            trapTriggered( enemies[i], traps[k] )
+          end
+        end
+      end
+
+
+      return true
+    end
+
+    --Initialize event listeners
+    Runtime:addEventListener( "enterFrame", gameLoop )
 	end
 end
 
