@@ -28,7 +28,11 @@ function toDeg( rad )
  return rad * 57.2958
 end
 
------------------------- Game Functions ------------------------
+function toRad( deg )
+  return deg / 57.2958
+end
+
+------------------------- Game Functions ------------------------
 
 -- when anything takes damage
 function damage( victim, damage )
@@ -36,9 +40,11 @@ function damage( victim, damage )
     victim.HP = victim.HP - damage
 
     if ( victim.HP <= 0 )then -- enemy death
-      print("enemy died")
+      victim.status = "dead"
       victim:removeSelf()
-      table.remove( enemies, victim.slot )
+      --table.remove( enemies, victim.slot )
+      --victim = nil
+      print("enemy " .. victim.ID .. " died")
     end
 
   elseif ( victim.type == "player" )then -- player takes damage
@@ -47,13 +53,46 @@ function damage( victim, damage )
     if ( victim.HP <= 0 )then -- player death
       print("player died")
       -- "freeze" the game (except idle animations)
-      Runtime:removeEventListener( "enterFrame", gameLoop ) -- what the fuck this doesnt do anything
+      Runtime:removeEventListener( "enterFrame", gameLoop )
       -- disable player input
       player.readyToFire = false
       -- send to an end of run scene after a few seconds
 
     end
   end
+end
+
+-- Initialize game loop
+function gameLoop( event ) -- checks for certain events every frame
+                           -- need to slow down how often it checks
+                           -- event.time = time passed in miliseconds
+  gameLoopCounter = gameLoopCounter + 1
+  if ( gameLoopCounter % 60 == 0 )then -- runs the code every x frames instead of 60
+
+    for i = 1, #traps, 1 do -- check if player is inside any of the traps
+      trapTriggered( player, traps[i] )
+    end
+
+    for i = 1, #enemies, 1 do -- check if any enemy
+      for k = 1, #traps, 1 do -- is inside any of the traps
+        if( enemies[i].status ~= "dead" )then
+          trapTriggered( enemies[i], traps[k] )
+        else
+          print( "enemy " .. enemies[i].ID .. " is dead" )
+        end
+      end
+    end
+
+    --[[this loop "deletes" the dead enemies from the table
+    for i = 1 , #enemies, 1 do -- sifts top to bottom
+      if( enemies[i].status == "dead" )then
+        --table.remove( enemies, enemies[i].slot ) <-- this is too slow
+        enemies[i] = nil
+      end
+    end]]
+
+  end
+  --return true
 end
 
 -- Fires guns that don't have projectiles
@@ -122,7 +161,9 @@ function spawnEnemy()
   local spawnLocation = environment.enemySpawns[ math.random( #environment.enemySpawns ) ]
   local enemy = display.newCircle( spawnLocation.x, spawnLocation.y, settings.enemies.enemyName.size )
   enemy.type = "enemy"
-  enemy.slot = numberOfEnemies + 1
+  enemy.slot = #enemies + 1
+  enemy.ID = numberOfEnemies + 1
+  enemy.status = "alive"
   enemy.HP = settings.enemies.enemyName.maxHP
   enemy:setFillColor(1,0,0)
 
@@ -133,6 +174,7 @@ function spawnEnemy()
   enemy.angularDamping = settings.player.friction
 
   table.insert( enemies, enemy )
+  numberOfEnemies = numberOfEnemies + 1
 end
 
 ------------------------ Event Functions ------------------------
@@ -189,12 +231,12 @@ end
 -- Handle bullet collision
 function onBulletCollision( victim, source ) -- thing getting hit, and the thing hitting it
   if ( victim.type == "enemy" ) then
-    local xForce = math.cos( player.rotation ) * source.knockback
-    local yForce = math.sin( player.rotation ) * source.knockback
+    local xForce = math.cos( toRad(player.rotation) ) * source.knockback
+    local yForce = math.sin( toRad(player.rotation) ) * source.knockback
     victim:applyLinearImpulse( xForce, yForce, victim.x, victim.y ) -- knocks the victim back
 
     damage( victim, source.damage ) -- deals damage to enemy
-    print(victim.type .. " took " .. source.damage .. " damage from " .. source.name)
+    --print(victim.type .. " took " .. source.damage .. " damage from " .. source.name)
   end
  end
 
@@ -204,19 +246,24 @@ function onBulletCollision( victim, source ) -- thing getting hit, and the thing
    local dx
    local dy
 
-   if ( victim.type == "player" ) then -- if player steps on trap
-     dx = victim.x - trap.x -- I dont understand why i dont need to add the layer.x value, i did for the rectangle method
-     dy = victim.y - trap.y
-   elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
-     dx = victim.x - trap.x
-     dy = victim.y - trap.y
-   end
+   if( victim.status == "dead" )then -- this check might be unnecessary
+     print("oh shit one slipped through")
+   else
+     if ( victim.type == "player" ) then -- if player steps on trap
+       dx = victim.x - trap.x -- + layer.x -- I dont understand why i dont need to add the layer.x value, i did for the rectangle method
+       dy = victim.y - trap.y -- + layer.y
+     elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
+       print( "victim: " .. victim.ID )
+       dx = victim.x - trap.x
+       dy = victim.y - trap.y
+     end
 
-   local distance = math.sqrt( dx*dx + dy*dy )
-   local objectSize = (trap.contentWidth/2) + (victim.contentWidth/2)
+     local distance = math.sqrt( dx*dx + dy*dy )
+    -- local objectSize = (trap.contentWidth/2) + (victim.contentWidth/2)
 
-   if ( distance < objectSize ) then
-      damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+     if ( distance < 150 ) then
+        damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+     end
    end
  end
 --[[ function trapTriggered( victim, trap )
@@ -256,7 +303,7 @@ function scene:create( event )
     enemies = {
       enemyName = {
         size = 60,
-        maxHP = 20
+        maxHP = 250
       }
     },
 
@@ -464,6 +511,7 @@ function scene:create( event )
 
   --Initialize event listeners
   Runtime:addEventListener( "tap", shoot )
+  Runtime:addEventListener( "enterFrame", gameLoop )
 end
 
 
@@ -474,31 +522,6 @@ function scene:show( event )
     physics.start()
     -- START SPAWNING ENEMIES CHANGE THIS NOT FUTURE PROOF
     timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
-
-    -- Initialize game loop
-    local function gameLoop( event ) -- checks for certain events every frame
-                                     -- need to slow down how often it checks
-                                     -- event.time = time passed in miliseconds
-      gameLoopCounter = gameLoopCounter + 1
-      if ( gameLoopCounter % 4 == 0 )then -- runs the code every 15 frames instead of 60
-
-        for i = 1, #traps, 1 do -- check if player is inside any of the traps
-          trapTriggered( player, traps[i] )
-        end
-
-        for i = 1, #enemies, 1 do -- check if any enemy
-          for k = 1, #traps, 1 do -- is inside any of the traps
-            trapTriggered( enemies[i], traps[k] )
-          end
-        end
-      end
-
-
-      return true
-    end
-
-    --Initialize event listeners
-    Runtime:addEventListener( "enterFrame", gameLoop )
 	end
 end
 
