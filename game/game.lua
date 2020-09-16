@@ -8,8 +8,6 @@ local scene = composer.newScene()
 ------------------------ Initialize variables ------------------------
 local settings
 local camera
-local pseudoQuadrant = {} -- need quadrants based on the origin being the player
-local shotQuadrant
 
 local player
 local ammoDisplay = {}
@@ -18,8 +16,12 @@ local map
 local environment = {}
 local enemies = {}
 local traps = {}
+local surfaces = {}
+local stationaryWeapons = {}
+
 local gameLoopCounter = 0
 local numberOfEnemies = 0
+local enemyGenerator
 
 ------------------------ Utility functions ------------------------
 
@@ -42,9 +44,8 @@ function damage( victim, damage )
     if ( victim.HP <= 0 )then -- enemy death
       victim.status = "dead"
       victim:removeSelf()
-      --table.remove( enemies, victim.slot )
-      --victim = nil
-      print("enemy " .. victim.ID .. " died")
+      enemies[victim.slot] = nil
+      print("enemy " .. victim.ID .. " died") -- i guess this still works because the garbage collector hasnt scrapped the table yet?
     end
 
   elseif ( victim.type == "player" )then -- player takes damage
@@ -53,48 +54,76 @@ function damage( victim, damage )
     if ( victim.HP <= 0 )then -- player death
       print("player died")
       -- "freeze" the game (except idle animations)
-      Runtime:removeEventListener( "enterFrame", gameLoop )
+        --timer.performWithDelay( 500, function() player:setLinearVelocity(0,0) end)
+      player:setLinearVelocity(0,0)
+      for i = 1, #enemies, 1 do -- freeze all the enemies
+        if( enemies[i] )then
+          enemies[i]:setLinearVelocity(0,0)
+        end
+      end
+      timer.cancel( enemyGenerator ) -- stop spawning enemies
+      --Runtime:removeEventListener( "enterFrame", gameLoop ) -- stop the gameLoop
       -- disable player input
-      player.readyToFire = false
+      Runtime:removeEventListener( "tap", shoot )
+      --player.readyToFire = false -- bug: removing the gameLoop listener above makes this line stop working
+                                   -- not fixed but technicaly doesnt matter cause removing the tap listener is even better
       -- send to an end of run scene after a few seconds
 
     end
   end
 end
 
+-- currently not needed but could be used later
 -- Initialize game loop
 function gameLoop( event ) -- checks for certain events every frame
-                           -- need to slow down how often it checks
                            -- event.time = time passed in miliseconds
   gameLoopCounter = gameLoopCounter + 1
-  if ( gameLoopCounter % 60 == 0 )then -- runs the code every x frames instead of 60
-
-    for i = 1, #traps, 1 do -- check if player is inside any of the traps
-      trapTriggered( player, traps[i] )
-    end
-
-    for i = 1, #enemies, 1 do -- check if any enemy
-      for k = 1, #traps, 1 do -- is inside any of the traps
-        if( enemies[i].status ~= "dead" )then
-          trapTriggered( enemies[i], traps[k] )
-        else
-          print( "enemy " .. enemies[i].ID .. " is dead" )
-        end
-      end
-    end
-
-    --[[this loop "deletes" the dead enemies from the table
-    for i = 1 , #enemies, 1 do -- sifts top to bottom
-      if( enemies[i].status == "dead" )then
-        --table.remove( enemies, enemies[i].slot ) <-- this is too slow
-        enemies[i] = nil
-      end
-    end]]
+  if ( gameLoopCounter % 15 == 0 )then -- runs the code every x frames instead of 60
 
   end
   --return true
 end
+-- Fires guns with projectiles
+function shootProjectile( shotAngle, weapon, user )
 
+  if ( weapon.table.automatic == false )then -- start/stop firing per tap
+
+  else -- fire once per tap
+    local projectile = display.newCircle( weapon.x + math.cos(shotAngle) * (weapon.path.radius), weapon.y + math.sin(shotAngle) * (weapon.path.radius), weapon.table.bulletSize )
+    physics.addBody( projectile, "dynamic", { radius = weapon.table.bulletSize, filter = {groupIndex = -1} } )
+    projectile.damage = weapon.table.damage
+    projectile.gravityScale = 0
+    projectile.isBullet = true
+    projectile.collision = projectileCollisionHandler
+    camera:add( projectile, 2 )
+
+    local xForce = math.cos( shotAngle ) * weapon.table.bulletSpeed
+    local yForce = math.sin( shotAngle ) * weapon.table.bulletSpeed
+
+    projectile:addEventListener("collision")
+    projectile:applyLinearImpulse( xForce, yForce, projectile.x, projectile.y )
+  end
+
+end
+
+-- Handles projectile collisions
+function projectileCollisionHandler(self, event)
+  local projectile = self
+  local victim = event.other
+
+  if ( victim.type == "enemy" )then
+    print( "hit enemy " .. victim.ID )
+    damage( victim, projectile.damage )
+
+  elseif ( victim.type == "player" )then
+    print( "hit player" )
+    damage( victim, projectile.damage )
+  elseif ( victim.type == "wall" )then
+    -- play animation
+  end
+
+  self:removeSelf()
+end
 -- Fires guns that don't have projectiles
 function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, each gun will probably have its own function
   --Load the pellets
@@ -118,12 +147,12 @@ function shootNonProjectile( shotAngle ) -- ended up specific to the shotgun, ea
                                 (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y, "closest" )
     if ( pellets[i] ) then -- if they hit a display object
       testLine[i] = display.newLine( player.x, player.y, pellets[i][1].position.x, pellets[i][1].position.y )
-      print( "Pellet " .. i .. " Hit ", pellets[i][1].object.type )
+      --print( "Pellet " .. i .. " Hit ", pellets[i][1].object.type )
       onBulletCollision( pellets[i][1].object, settings.guns[player.gun] )
     else -- if they miss
       testLine[i] = display.newLine( player.x, player.y, (math.cos( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.x,
                                    (math.sin( shotAngle + settings.guns[player.gun].spread[i] ) * settings.guns[player.gun].range) + player.y )
-      print( "miss" )
+      --print( "miss" )
     end
     testLine[i]:setStrokeColor( 20, 19, 0 ) -- why the fuck is this yellow??
     camera:add( testLine[i], 2 )
@@ -163,13 +192,17 @@ function spawnEnemy()
   enemy.type = "enemy"
   enemy.slot = #enemies + 1
   enemy.ID = numberOfEnemies + 1
-  enemy.status = "alive"
+  enemy.status = "alive" -- not currently needed but could be used for cc later
+  enemy.surface = "ground" -- not currently needed but could be used for soundEFX and animations later
+  enemy.usingStationaryWeapon = false
   enemy.HP = settings.enemies.enemyName.maxHP
+  --local enemyName = display.newText( tostring( enemy.ID ), enemy.x, enemy.y, native.systemFont, 100 ) -- doesnt follow the unit
   enemy:setFillColor(1,0,0)
 
   camera:add( enemy, 1 )
+  --camera:add( enemyName, 1 )
 
-  physics.addBody( enemy, "dynamic", {bounce = 0} )
+  physics.addBody( enemy, "dynamic", {bounce = 0, radius = settings.enemies.enemyName.size } )
   enemy.linearDamping = settings.player.friction
   enemy.angularDamping = settings.player.friction
 
@@ -187,7 +220,7 @@ function shoot( event )
     local xDiff = event.x - ( player.x + layer.x )
     local yDiff = event.y - ( player.y + layer.y )
     local angle = math.atan2( yDiff, xDiff )
-    print(toDeg(angle)) -- q1 is -90 to 0
+    --print(toDeg(angle)) -- q1 is -90 to 0
                         -- q2 is 0 to 90
                         -- q3 is 90 to 180
                         -- q4 is -180 to -90
@@ -201,6 +234,7 @@ function shoot( event )
 
     if ( settings.guns[player.gun].projectile ) then
       -- Projectile weapons
+      shootProjectile( angle, player.stationaryWeapon, player )
     else
       -- Non-projectile weapons
       shootNonProjectile( angle )
@@ -217,6 +251,7 @@ function shoot( event )
        end )
     else -- reloading
         ammoDisplay[player.ammo].isVisible = false
+        print( "reloading ..." )
         timer.performWithDelay( settings.guns[player.gun].reloadTime, function()
          player.ammo = settings.guns[player.gun].magazine
          player.readyToFire = true
@@ -228,6 +263,45 @@ function shoot( event )
   end
 end
 
+-- Function that handles shooting stationary weapons
+function shootStationaryWeapon( event )
+  if ( player.readyToFire == true )then
+    local layer = camera:layer(1)
+    local xDiff = event.x - ( player.x + layer.x )
+    local yDiff = event.y - ( player.y + layer.y )
+    local angle = math.atan2( yDiff, xDiff )
+
+    if ( player.stationaryWeapon.table.projectile == true ) then
+      -- Projectile weapons
+      shootProjectile( angle, player.stationaryWeapon, player )
+    elseif ( player.stationaryWeapon.table.projectile == false )then
+      -- Non-projectile weapons
+      shootNonProjectile( angle )
+    end
+    player.rotation = toDeg( angle )
+    environment.miniGun.rotation = player.rotation
+
+    -- Disable shooting
+    player.readyToFire = false
+    if ( player.ammo > 1 ) then
+  --    ammoDisplay[player.ammo].isVisible = false
+      player.ammo = player.ammo - 1
+      timer.performWithDelay( player.stationaryWeapon.table.attackSpeed, function()
+        player.readyToFire = true
+      end )
+    else -- reloading
+    --    ammoDisplay[player.ammo].isVisible = false
+        print( "reloading ..." )
+        timer.performWithDelay( player.stationaryWeapon.table.reloadTime, function()
+          player.ammo = player.stationaryWeapon.table.magazine
+          player.readyToFire = true
+        --  for i = 1, player.ammo, 1 do
+        --    ammoDisplay[i].isVisible = true
+        --  end
+        end )
+    end
+  end
+end
 -- Handle bullet collision
 function onBulletCollision( victim, source ) -- thing getting hit, and the thing hitting it
   if ( victim.type == "enemy" ) then
@@ -241,49 +315,125 @@ function onBulletCollision( victim, source ) -- thing getting hit, and the thing
  end
 
  -- Handle stepping on traps
- function trapTriggered( victim, trap )
+ function trapTriggered( self, event ) -- event.target/self = trap
+                                       -- event.other = victim
    local layer = camera:layer(1) -- i guess this is unnecessary?
+                                 -- I dont understand why i dont need to add the layer.x/y value to the player coordinates, i did for the rectangle method
+   local trap = self
+   local victim = event.other
    local dx
    local dy
 
-   if( victim.status == "dead" )then -- this check might be unnecessary
-     print("oh shit one slipped through")
-   else
      if ( victim.type == "player" ) then -- if player steps on trap
-       dx = victim.x - trap.x -- + layer.x -- I dont understand why i dont need to add the layer.x value, i did for the rectangle method
-       dy = victim.y - trap.y -- + layer.y
+       print( "player stepped on trap" )
      elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
-       print( "victim: " .. victim.ID )
+       print( "enemy " .. victim.ID .. " stepped on trap " )
+     end
+
+     function checkDistance()
        dx = victim.x - trap.x
        dy = victim.y - trap.y
+
+       local distance = math.sqrt( dx*dx + dy*dy ) -- distance between trap circumference and victim's centre of mass
+                                                   -- value is too high because this is calculated as soon as the objects touch, not continuesly
+       if ( distance <= trap.path.radius ) then -- if victim origin is in trap
+         damage( victim, victim.HP ) -- insta kill, damage equals vicim health
+       elseif ( distance > trap.path.radius and distance <= trap.path.radius + victim.path.radius ) then
+                                                       -- if victim is touching trap but origin is not inside
+         timer.performWithDelay( 100,  checkDistance ) -- repeat check
+       end
      end
 
-     local distance = math.sqrt( dx*dx + dy*dy )
-    -- local objectSize = (trap.contentWidth/2) + (victim.contentWidth/2)
-
-     if ( distance < 150 ) then
-        damage( victim, victim.HP ) -- insta kill, damage equals vicim health
-     end
-   end
+     timer.performWithDelay( 100,  checkDistance ) -- need a delay or the distance value will be calculated on contact
  end
---[[ function trapTriggered( victim, trap )
+
+ -- CURRENTLY OBSOLETE
+ --[[ Checks what surface a unit is on and what modifications to apply
+ function checkSurface( character, surface ) -- all surfaces have to be rectangles for this to work
    local layer = camera:layer(1)
 
-   if ( victim.type == "player" ) then -- if player steps on trap
-     if ( trap.contentBounds.xMin <= (victim.x + layer.x) and trap.contentBounds.xMax >= (victim.x + layer.x) and
-          trap.contentBounds.yMin <= (victim.y + layer.y) and trap.contentBounds.yMax >= (victim.y + layer.y) ) then
-          print("you died")
-          damage( victim, victim.HP ) -- insta kill, damage equals vicim health
-     end
-   elseif ( victim.type == "enemy" ) then -- if enemy "steps" on trap
-     if ( trap.contentBounds.xMin <= (victim.x) and trap.contentBounds.xMax >= (victim.x) and
-          trap.contentBounds.yMin <= (victim.y) and trap.contentBounds.yMax >= (victim.y) ) then
-          print("enemy died")
-          damage( victim, victim.HP ) -- insta kill, damage equals vicim health
-     end
-   end
+    if ( character.type == "player" ) then -- if player steps on surface
+      if ( surface.contentBounds.xMin <= (character.x + layer.x) and surface.contentBounds.xMax >= (character.x + layer.x) and
+           surface.contentBounds.yMin <= (character.y + layer.y) and surface.contentBounds.yMax >= (character.y + layer.y) ) then
+           print("Player has stepped on: " .. surface.type)
+           character.surface = surface.type
+           surface.fn(character)
+      end
+
+    elseif ( character.type == "enemy" ) then -- if enemy steps on surface
+      if ( surface.contentBounds.xMin <= (character.x) and surface.contentBounds.xMax >= (character.x) and
+           surface.contentBounds.yMin <= (character.y) and surface.contentBounds.yMax >= (character.y) ) then
+           print( "Enemy " .. character.ID .. " has stepped on: " .. surface.type)
+           character.surface = surface.type
+           surface.fn(character)
+      end
+    end
  end]]
 
+-- FUNCTIONS FOR SURFACES
+ -- Handles sliding across ice
+ function onIce( self, event )
+  local skater = event.other
+
+  if (event.phase == "began") then -- when unit enters ice
+    -- make them slip instantly
+    skater.linearDamping = settings.environment.icyMountains.ice.friction
+    skater.angularDamping = settings.environment.icyMountains.ice.friction
+  elseif (event.phase == "ended") then -- when unit leaves ice
+    -- make them STOP slipping instantly
+    skater.linearDamping = settings.player.friction
+    skater.angularDamping = settings.player.friction
+  end
+ end
+
+ -- Handles slugging through mud
+ function onMud( self, event )
+   local victim = event.other
+
+   if (event.phase == "began") then -- when unit enters mud
+     -- make them slip instantly
+     victim.linearDamping = settings.environment.swamp.mud.friction
+     victim.angularDamping = settings.environment.swamp.mud.friction
+   elseif (event.phase == "ended") then -- when unit leaves mud
+     -- make them STOP slipping instantly
+     victim.linearDamping = settings.player.friction
+     victim.angularDamping = settings.player.friction
+   end
+ end
+
+ function onGround( walker ) -- probably unnecessary but might be needed for the walking sound of different default surfaces
+   walker.linearDamping = settings.player.friction
+   walker.angularDamping = settings.player.friction
+ end
+
+-- FUNCTIONS FOR STATIONARY WEAPONS
+  -- Snowball Mini-Gun
+  function miniGun( self, event )
+    local miniGun = self
+    local pilot = event.other
+
+    pilot.usingStationaryWeapon = true
+    pilot.stationaryWeapon = miniGun
+
+    if ( pilot.type == "player" )then -- if player mounted the weapon
+      Runtime:removeEventListener("tap", shoot)
+      pilot.ammo = miniGun.table.magazine
+      timer.performWithDelay( 500, function() -- delay for animations and shit
+        miniGun.isSensor = true
+        pilot.x = miniGun.x
+        pilot.y = miniGun.y
+        pilot.rotation = miniGun.rotation
+      --[[  for i = 1, player.ammo, 1 do -- will need to change shit when we have a different ammo icon
+          ammoDisplay[i].isVisible = true
+        end]]
+        player.readyToFire = true
+        Runtime:addEventListener("tap", shootStationaryWeapon)
+      end)
+    elseif ( pilot.type == "enemy" )then -- if enemy mounted weapon
+
+    end
+
+  end
 ------------------------ Scene Functions ------------------------
 -- create()
 function scene:create( event )
@@ -316,7 +466,7 @@ function scene:create( event )
         knockback = 1, -- distance enemy moves back when hit
         magazine = 6,
         reloadTime = 3000, -- miliseconds
-        attackSpeed = 1000, -- minimum time between shots
+        attackSpeed = 300, -- minimum time between shots
         range = 400, -- Hypotneus value of the shot angle
         pelletCount = 5, -- number of pellets per shot
         spread = { -1/3, -1/6, 0, 1/6, 1/3 }, -- spread of the pellets
@@ -334,9 +484,32 @@ function scene:create( event )
       }
     },
 
+    stationaryWeapons = {
+      miniGun = {
+        name = "Snowball Mini-Gun",
+        projectile = true,
+        automatic = true,
+        bulletSize = 10, -- radius of circle
+        bulletSpeed = 50,
+        recoil = 0,
+        damage = 5,
+        knockback = 1,
+        magazine = 50,
+        reloadTime = 10000,
+        attackSpeed = 100,
+        ammoIcon = "Assets/Pixel/weaponAssets/shotgunAmmo.png",
+        ammoIconSize = {width = 50, height = 132}, -- vertical image, 2.65 ratio
+        ammoIconSpacing = 70,
+        audio = {}
+      }
+    },
+
     environment = {
       standardThickness = 50, -- standardThickness of a wall
       icyMountains = {
+        ice = {
+          friction = 0.5 -- the lower the value the slipperier the ice
+        },
         majorBorders = { -- twice as thick as regular walls
           topBorderSize = 3000, -- anchored to origin
           leftBorderSize = 3000,
@@ -361,6 +534,11 @@ function scene:create( event )
           island2Size = 200,
           island3Size = 150
         }
+      },
+      swamp = {
+        mud = {
+          friction = 6
+        }
       }
     },
 
@@ -380,17 +558,23 @@ function scene:create( event )
   -- Setup the camera
   camera = perspective.createView()
 
-  --Load the map
-  map = display.newRect( -1550, 0, 5000, 5000 )
-  map.anchorX = 0
-  map.anchorY = 0
-  map:setFillColor( 0.2, 0.2, 0.2 )
-  camera:add( map, 2 )
   -----------------------------------------------------------------------------------------------------
   ---------------------------------------- LOAD ENVIRONMENT -------------------------------------------
   -----------------------------------------------------------------------------------------------------
 
   -- ICY MOUNTAINS
+    -- ground (snow)
+      -- every environment will have its own default surface for the sake of sound efx
+      environment.snow = display.newRect( settings.environment.icyMountains.majorBorders.topBorderSize/-2, settings.environment.standardThickness, settings.environment.icyMountains.majorBorders.topBorderSize, settings.environment.icyMountains.majorBorders.rightBorderSize - settings.environment.standardThickness*2) -- placeholder values
+      environment.snow.anchorX = environment.snow.x
+      environment.snow.anchorY = environment.snow.y - environment.snow.height
+      environment.snow.type = "ground"
+      environment.snow.slot = #surfaces + 1
+      environment.snow.fn = onGround
+      environment.snow:setFillColor( 0.2, 0.2, 0.2 )
+      camera:add( environment.snow, 2 )
+      table.insert( surfaces, environment.snow1 )
+
     -- major borders
       environment.topBorder = display.newRect( 0, 0, settings.environment.icyMountains.majorBorders.topBorderSize, settings.environment.standardThickness * 2 ) -- anchor wall
       environment.leftBorder = display.newRect( (environment.topBorder.width / 2 + settings.environment.standardThickness)*-1,
@@ -468,18 +652,46 @@ function scene:create( event )
 
   -- TERRAIN
     -- TRAPS
-      environment.iceTrap = display.newCircle( -900, 600, 150 )
+      environment.iceTrap = display.newCircle( -800, 600, 150 )
       environment.iceTrap.type = "trap"
       environment.iceTrap.slot = #traps + 1
       camera:add( environment.iceTrap, 2 )
+      physics.addBody( environment.iceTrap, "static", {bounce = 0, isSensor = true, radius = 150, filter = {groupIndex = -1} } )
+      environment.iceTrap.collision = trapTriggered
+      environment.iceTrap:addEventListener( "collision" )
       table.insert( traps, environment.iceTrap )
-      --local iceTrapBounds = environment.iceTrap.contentBounds
+
+    -- SURFACES
+      environment.ice1 = display.newRect( environment.wall1.x - 800, environment.wall1.y, 800, environment.wall1.height ) -- not exact coordinates
+      environment.ice1.type = "ice"
+      environment.ice1.slot = #surfaces + 1
+      environment.ice1.fn = onIce
+      environment.ice1:setFillColor( 0, 0.6, 0.8 )
+      camera:add( environment.ice1, 2 )
+      physics.addBody( environment.ice1, "static", {bounce = 0, isSensor = true, filter = {groupIndex = -1} } )
+      environment.ice1.collision = onIce
+      environment.ice1:addEventListener( "collision" )
+      table.insert( surfaces, environment.ice1 )
+
+  -- STATIONARY WEAPONS
+   -- Snowball Mini-Gun
+      environment.miniGun = display.newCircle( environment.island3.x, environment.island3.y - 300, 100 )
+      environment.miniGun.type = "stationary weapon"
+      environment.miniGun.slot = #stationaryWeapons + 1
+      environment.miniGun.table = settings.stationaryWeapons.miniGun
+
+      environment.miniGun:setFillColor( 0.4, 0.4, 0.4 )
+      camera:add( environment.miniGun, 2 )
+      physics.addBody( environment.miniGun, "static", {bounce = 0, radius = 100, filter = {groupIndex = -1} } )
+      environment.miniGun.collision = miniGun
+      environment.miniGun:addEventListener( "collision" )
+      table.insert( stationaryWeapons, environment.miniGun )
 
   -- Load enemy spawns
   environment.enemySpawns = {
     --{ x = 600, y = 200 },
     --{ x = 400, y = 400 },
-    { x = -600, y = 600 }
+    { x = -575, y = 600 }
   }
 
   -- Load the player
@@ -488,10 +700,12 @@ function scene:create( event )
   player.readyToFire = true
   player.ammo = settings.guns[player.gun].magazine
   player.type = "player"
+  player.usingStationaryWeapon = false
   player.HP = settings.player.maxHP
+  player.surface = "ground"
   player:setFillColor(0,0,1)
 
-  physics.addBody( player, "dynamic", {bounce = 0} )
+  physics.addBody( player, "dynamic", {bounce = 0, radius = settings.player.size } )
   player.linearDamping = settings.player.friction
   player.angularDamping = settings.player.friction
 
@@ -511,7 +725,7 @@ function scene:create( event )
 
   --Initialize event listeners
   Runtime:addEventListener( "tap", shoot )
-  Runtime:addEventListener( "enterFrame", gameLoop )
+  --Runtime:addEventListener( "enterFrame", gameLoop )
 end
 
 
@@ -521,7 +735,8 @@ function scene:show( event )
     -- start the physics engine
     physics.start()
     -- START SPAWNING ENEMIES CHANGE THIS NOT FUTURE PROOF
-    timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
+    enemyGenerator = timer.performWithDelay( settings.game.spawnTime, spawnEnemy, -1 )
+
 	end
 end
 
